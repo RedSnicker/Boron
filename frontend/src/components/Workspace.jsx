@@ -160,7 +160,7 @@ function TerminalDialog({user,onClose}){
   const [input,setInput]=useState('');
   const [busy,setBusy]=useState(false);
   const isAdmin=user.role==='admin'||user.role==='owner';
-  const run=async()=>{if(!input.trim()||!isAdmin)return;setBusy(true);try{const r=await api.post('/api/admin/command',{command:input.trim()});setOutput(prev=>prev+'\\n$ '+input.trim()+'\\n'+(r.data.output||''));input='';}catch(e){setOutput(prev=>prev+'\\nError: '+(e.response?.data?.message||e.message));}finally{setBusy(false);}};
+  const run=async()=>{if(!input.trim()||!isAdmin)return;setBusy(true);try{const r=await api.post('/api/admin/command',{command:input.trim()});setOutput(prev=>prev+'\\n$ '+input.trim()+'\\n'+(r.data.output||''));setInput('');}catch(e){setOutput(prev=>prev+'\\nError: '+(e.response?.data?.message||e.message));}finally{setBusy(false);}};
   return <Dialog isOpen onOpenChange={v=>{if(!v)onClose();}} width={600} aria-label="Admin Terminal"><Stack gap={3}><Heading level={2}>Admin Terminal</Heading><Stack className="terminal-wrap" height={300}><pre className="terminal-output">{output}</pre></Stack><form onSubmit={e=>{e.preventDefault();run();}}><Stack direction="horizontal" gap={2}><span className="terminal-prompt">$</span><input type="text" value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')run();}} disabled={busy||!isAdmin} placeholder={isAdmin?'Enter command (help for list)':'Admin access required'}/>{busy&&<Spinner size="sm"/>}</Stack></form>{!isAdmin&&<Banner status="error" title="Admin access required."/>}</Stack></Dialog>;
 }
 

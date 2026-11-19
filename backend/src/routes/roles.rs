@@ -75,12 +75,13 @@ async fn update_role(
     if role.as_deref() != Some("admin") && role.as_deref() != Some("owner") {
         return Err(AppError { status: StatusCode::FORBIDDEN, message: "Admin required".into() });
     }
-    let perms_json = serde_json::to_string(&payload.permissions.unwrap_or_default()).unwrap_or_default();
+    let perms = payload.permissions.clone().unwrap_or_default();
+    let perms_json = serde_json::to_string(&perms).unwrap_or_default();
     let color = payload.color.unwrap_or_else(|| "#7289da".to_string());
     sqlx::query("UPDATE roles SET name = ?, color = ?, permissions = ? WHERE id = ?")
         .bind(&payload.name).bind(&color).bind(&perms_json).bind(role_id)
         .execute(&pool).await.map_err(|e| AppError { status: StatusCode::INTERNAL_SERVER_ERROR, message: e.to_string() })?;
-    Ok(Json(Role { id: role_id, team_id: payload.team_id, name: payload.name, color, permissions: payload.permissions.unwrap_or_default() }))
+    Ok(Json(Role { id: role_id, team_id: payload.team_id, name: payload.name, color, permissions: perms }))
 }
 
 async fn delete_role(

@@ -3,7 +3,8 @@ use crate::models::error::AppError;
 use tokio::io::{AsyncWriteExt,AsyncReadExt,AsyncSeekExt};
 use uuid::Uuid;
 use std::path::PathBuf;
-use image::ImageOutputFormat;
+use std::io::Cursor;
+use image::ImageFormat;
 
 pub const MAX_FILE: u64 = 800 * 1024 * 1024;
 pub const MAX_REQUEST: usize = MAX_FILE as usize + 1024 * 1024;
@@ -24,14 +25,15 @@ fn compress_image(filepath: &std::path::Path, mime: &str) -> Result<Option<(u64,
         Err(_) => return Ok(None),
     };
     let mut buf = Vec::new();
+    let mut cursor = Cursor::new(&mut buf);
     let (fmt, ext) = match mime {
-        "image/jpeg" => (ImageOutputFormat::Jpeg(85), "image/jpeg"),
-        "image/webp" => (ImageOutputFormat::WebP(85), "image/webp"),
-        "image/png" => (ImageOutputFormat::Png, "image/png"),
-        "image/gif" => (ImageOutputFormat::Gif, "image/gif"),
+        "image/jpeg" => (ImageFormat::Jpeg, "image/jpeg"),
+        "image/webp" => (ImageFormat::WebP, "image/webp"),
+        "image/png" => (ImageFormat::Png, "image/png"),
+        "image/gif" => (ImageFormat::Gif, "image/gif"),
         _ => return Ok(None),
     };
-    if img.write_to(&mut buf, fmt).is_ok() && !buf.is_empty() {
+    if img.write_to(&mut cursor, fmt).is_ok() && !buf.is_empty() {
         let _ = std::fs::write(filepath, &buf);
         Ok(Some((buf.len() as u64, ext.to_string())))
     } else {
@@ -60,7 +62,6 @@ pub async fn receive(mut multipart: Multipart, image_only: bool) -> Result<Uploa
  if actual.starts_with("image/") {
     if let Some((compressed_size, compressed_mime)) = compress_image(&filepath, &actual)? {
         size = compressed_size;
-        let _ = std::fs::set_permissions(&filepath, std::fs::Permissions::from_mode(0o644));
         // Update mime if changed
         let final_mime = compressed_mime;
         Ok(Upload{id,filename:if filename.is_empty(){"file".into()}else{filename},mime:final_mime,size:size as i64})
