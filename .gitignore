@@ -1,7 +1,6 @@
 # Rust
 /target/
 /**/*.rs.bak
-Cargo.lock
 
 # Frontend
 frontend/node_modules/
