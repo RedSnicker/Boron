@@ -1,0 +1,29 @@
+services:
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.backend
+    environment:
+      DATABASE_URL: sqlite:/data/boron.db
+      UPLOAD_DIR: /data/uploads
+      JWT_SECRET: ${JWT_SECRET:-change_this_to_a_secure_random_string_in_production}
+      ACCOUNT_REGISTRATION_MODE: ${ACCOUNT_REGISTRATION_MODE:-open}
+      FRONTEND_URL: http://localhost:57575
+      PORT: 3001
+      HOST: 0.0.0.0
+    ports:
+      - "3001:3001"
+    volumes:
+      - boron_sqlite_data:/data
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.frontend
+    ports:
+      - "57575:80"
+    depends_on:
+      - backend
+
+volumes:
+  boron_sqlite_data:

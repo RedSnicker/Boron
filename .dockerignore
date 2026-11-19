@@ -1,0 +1,10 @@
+**/node_modules
+**/target
+**/dist
+**/.git
+**/.env
+**/uploads
+**/*.db
+**/*.sqlite
+**/*.log
+**/*.zip
