@@ -128,7 +128,7 @@ async fn main() {
         ])
         .allow_credentials(true);
 
-    async fn api_version() -> axum::Json<serde_json::Value> { axum::Json(serde_json::json!({"api_revision": 7, "service":"boron-backend"})) }
+    async fn api_version() -> axum::Json<serde_json::Value> { axum::Json(serde_json::json!({"api_revision": 8, "service":"boron-backend"})) }
     async fn health_check() -> Result<&'static str, AppError> {
         Ok("OK")
     }
