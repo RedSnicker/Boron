@@ -40,6 +40,14 @@ export function Workspace({apiWarning,checkApi,user,onSignOut,onProfile,onSwitch
  useEffect(()=>{if(!accountOpen)return;const close=e=>{if(e.type==='keydown'&&e.key!=='Escape')return;if(e.target?.closest?.('.account-footer'))return;setAccountOpen(false);};document.addEventListener('pointerdown',close);document.addEventListener('keydown',close);return()=>{document.removeEventListener('pointerdown',close);document.removeEventListener('keydown',close);};},[accountOpen]);
  useEffect(()=>{loadTeams();},[loadTeams]);useEffect(()=>{loadTeam();},[loadTeam]);
  const loadUnread=useCallback(()=>api.get('/api/channels/unread').then(r=>setUnread(r.data)).catch(()=>{}),[]);
+
+  const reorderChannels=useCallback(async()=>{if(!teamId)return;const ordered=channels.map((c,i)=>({id:c.id,position:i}));for(const ch of ordered){try{await api.put(`/api/channels/${ch.id}/reorder`,{channel_id:ch.id,position:ch.position});}catch(e){console.error('Reorder failed',e);}}},[teamId,channels]);
+
+  const onDragStart=(e,id)=>{setDraggedChannel(id);e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/id',id);};
+  const onDragOver=(e)=>{e.preventDefault();e.dataTransfer.dropEffect='move';};
+  const onDrop=(e,targetId)=>{e.preventDefault();if(!draggedChannel||draggedChannel===targetId)return;const draggedIdx=channels.findIndex(c=>c.id===draggedChannel);const targetIdx=channels.findIndex(c=>c.id===targetId);if(draggedIdx<0||targetIdx<0)return;const newChannels=[...channels];const [moved]=newChannels.splice(draggedIdx,1);newChannels.splice(targetIdx,0,moved);setChannels(newChannels);setDraggedChannel(null);setTimeout(reorderChannels,100);};
+
+  const channelIcons=c=>{if(c.type==='issues')return <FileText size={15}/>;if(c.type==='notes')return <FileText size={15}/>;if(c.type==='page')return <FileText size={15}/>;return c.is_private?<LockKeyhole size={15}/>:<Hash size={15}/>;};
  useEffect(()=>{loadUnread();const timer=setInterval(loadUnread,4000);window.addEventListener('boron-unread-changed',loadUnread);return()=>{clearInterval(timer);window.removeEventListener('boron-unread-changed',loadUnread);};},[loadUnread]);
  useEffect(()=>{let active=true;async function check(){try{const r=await api.get('/api/reminders');if(!active)return;for(const item of r.data){if(new Date(item.remind_at).getTime()>Date.now())continue;const ack=await api.post(`/api/reminders/${item.id}/delivered`);if(!active||!ack.data.delivered)continue;setAlerts(old=>[...old,item]);notify(`Reminder in #${item.channel_name}`,item.content||'Message reminder',()=>navigate(`/team/${item.team_id}/channel/${item.channel_id}?message=${item.message_id}`));}}catch{}}check();const timer=setInterval(check,5000);return()=>{active=false;clearInterval(timer);};},[user.id,navigate]);
  useEffect(()=>{if(teamId)setExpanded(prev=>({...prev,[teamId]:true}));},[teamId]);
