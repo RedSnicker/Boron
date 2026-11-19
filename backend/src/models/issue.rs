@@ -14,6 +14,7 @@ pub struct Issue {
     pub priority: IssuePriority,
     pub assignee_id: Option<Uuid>,
     pub reporter_id: Uuid,
+    pub is_private: bool,
     pub github_issue_number: Option<i32>,
     pub github_pr_number: Option<i32>,
     pub created_at: NaiveDateTime,
@@ -50,4 +51,5 @@ pub struct CreateIssueRequest {
     pub priority: Option<IssuePriority>,
     pub assignee_id: Option<Uuid>,
     pub assignee_ids: Option<Vec<Uuid>>,
+    pub is_private: Option<bool>,
 }

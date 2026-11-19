@@ -205,3 +205,8 @@ select,input[type=file] { color:inherit; background:var(--color-background-muted
 .column-heading { flex:none; }
 .column-body { flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; padding-bottom:var(--spacing-2); scrollbar-width:thin; }
 .pin-actions { display:flex; gap:var(--spacing-3); }
+
+/* Admin Terminal */
+.terminal-wrap { border:0.0625rem solid var(--color-border); border-radius:var(--radius-element); background:var(--color-background-inverted); color:var(--color-text-inverted); padding:var(--spacing-3); font-family:var(--font-family-mono); font-size:var(--font-size-sm); overflow:auto; }
+.terminal-output { white-space:pre-wrap; word-wrap:break-word; margin:0; }
+.terminal-prompt { color:var(--color-accent); font-weight:600; margin-right:var(--spacing-1); }

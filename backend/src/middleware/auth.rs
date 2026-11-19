@@ -12,7 +12,7 @@ pub async fn auth_middleware(State(pool): State<sqlx::SqlitePool>, mut request: 
         return Ok(next.run(request).await);
     }
     let token = request.headers().get(axum::http::header::AUTHORIZATION).and_then(|v| v.to_str().ok()).and_then(|v| v.strip_prefix("Bearer ")).ok_or(StatusCode::UNAUTHORIZED)?;
-    let secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "default_secret_change_me".into());
+    let secret = std::env::var("JWT_SECRET").expect("JWT_SECRET must be set and non-default");
     let claims: jsonwebtoken::TokenData<serde_json::Value> = jsonwebtoken::decode(token, &jsonwebtoken::DecodingKey::from_secret(secret.as_ref()), &jsonwebtoken::Validation::default()).map_err(|_| StatusCode::UNAUTHORIZED)?;
     if claims.claims.get("kind").and_then(|v| v.as_str()) == Some("file_download") { return Err(StatusCode::UNAUTHORIZED); }
     let user_id = claims.claims.get("sub").and_then(|v| v.as_str()).and_then(|s| Uuid::parse_str(s).ok()).ok_or(StatusCode::UNAUTHORIZED)?;

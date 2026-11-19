@@ -7,5 +7,5 @@ pub mod github;
 pub mod health;
 pub mod websocket;
 pub mod chat;
-
 pub mod stickers;
+pub mod admin;

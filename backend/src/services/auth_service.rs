@@ -11,7 +11,7 @@ pub struct AuthService {
 impl AuthService {
     pub fn new(pool: SqlitePool) -> Self {
         let jwt_secret = std::env::var("JWT_SECRET")
-            .unwrap_or_else(|_| "default_secret_change_me".into());
+            .expect("JWT_SECRET must be set and non-default");
         
         Self { pool, jwt_secret }
     }
@@ -30,21 +30,31 @@ impl AuthService {
         }
         let registration_mode = std::env::var("ACCOUNT_REGISTRATION_MODE")
             .unwrap_or_else(|_| "open".into());
-        
 
+        if registration_mode != "open" && registration_mode != "closed" {
+            return Err(ServiceError { status_code: axum::http::StatusCode::INTERNAL_SERVER_ERROR, message: "Invalid ACCOUNT_REGISTRATION_MODE. Must be 'open' or 'closed'.".into() });
+        }
+
+        // Atomic bootstrap: use a transaction to prevent race conditions
+        let mut tx = self.pool.begin().await.map_err(|e| ServiceError {
+            status_code: axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            message: format!("Failed to begin transaction: {}", e),
+        })?;
 
         let user_count: Option<(i64,)> = sqlx::query_as("SELECT COUNT(*) FROM users")
-            .fetch_optional(&self.pool)
+            .fetch_optional(&mut *tx)
             .await
             .map_err(|e| ServiceError {
                 status_code: axum::http::StatusCode::INTERNAL_SERVER_ERROR,
                 message: format!("Failed to check user count: {}", e),
             })?;
 
-        let is_active = registration_mode != "closed" || matches!(user_count, Some((0,)));
-        let role = match user_count {
-            Some((count,)) if count == 0 => UserRole::Admin,
-            _ => UserRole::Member,
+        let is_first_user = matches!(user_count, Some((0,)));
+        let is_active = registration_mode != "closed" || is_first_user;
+        let role = if is_first_user {
+            UserRole::Admin
+        } else {
+            UserRole::Member
         };
 
         let password_hash = bcrypt::hash(&payload.password, bcrypt::DEFAULT_COST)
@@ -66,12 +76,17 @@ impl AuthService {
             .bind(is_active)
             .bind(now)
             .bind(now)
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await
             .map_err(|e| ServiceError {
                 status_code: if e.as_database_error().is_some_and(|d| d.is_unique_violation()) { axum::http::StatusCode::CONFLICT } else { axum::http::StatusCode::INTERNAL_SERVER_ERROR },
                 message: if e.as_database_error().is_some_and(|d| d.is_unique_violation()) { "An account with that email already exists.".into() } else { format!("Failed to create user: {}", e) },
             })?;
+
+        tx.commit().await.map_err(|e| ServiceError {
+            status_code: axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            message: format!("Failed to commit registration: {}", e),
+        })?;
 
         let user = User {
             id: user_id,

@@ -13,6 +13,8 @@ pub struct Channel {
     pub description: Option<String>,
     pub is_private: bool,
     pub required_role: Option<ChannelRole>,
+    pub position: i32,
+    pub icon: Option<String>,
     pub created_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
 }
@@ -46,4 +48,6 @@ pub struct CreateChannelRequest {
     pub description: Option<String>,
     pub is_private: Option<bool>,
     pub required_role: Option<ChannelRole>,
+    pub position: Option<i32>,
+    pub icon: Option<String>,
 }

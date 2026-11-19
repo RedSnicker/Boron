@@ -75,6 +75,19 @@ async fn main() {
 
     dotenv::dotenv().ok();
 
+    // Security: reject default/fallback JWT keys at startup
+    let jwt_secret = std::env::var("JWT_SECRET");
+    if let Ok(ref secret) = jwt_secret {
+        if secret == "default_secret_change_me" || secret == "change_this_to_a_secure_random_string_in_production" || secret.is_empty() {
+            eprintln!("CRITICAL SECURITY ERROR: JWT_SECRET is set to a default/fallback value. Generate a strong random secret with: openssl rand -hex 32");
+            std::process::exit(1);
+        }
+    } else {
+        eprintln!("CRITICAL SECURITY ERROR: JWT_SECRET environment variable is not set. Generate one with: openssl rand -hex 32");
+        std::process::exit(1);
+    }
+    let jwt_secret = jwt_secret.unwrap();
+
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
     let options = SqliteConnectOptions::from_str(&database_url)
         .expect("DATABASE_URL must be a valid SQLite URL")
@@ -132,6 +145,7 @@ async fn main() {
         .nest("/api/issues", routes::issues::routes(pool.clone()))
         .nest("/api/notes", routes::notes::routes(pool.clone()))
         .nest("/api/github", routes::github::routes(pool.clone()))
+        .nest("/api/admin", routes::admin::routes(pool.clone()))
         .route("/ws", get(routes::websocket::handler))
         .fallback(serve_frontend)
         .layer(axum::middleware::from_fn_with_state(

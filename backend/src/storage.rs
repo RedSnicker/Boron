@@ -3,15 +3,41 @@ use crate::models::error::AppError;
 use tokio::io::{AsyncWriteExt,AsyncReadExt,AsyncSeekExt};
 use uuid::Uuid;
 use std::path::PathBuf;
+use image::ImageOutputFormat;
 
 pub const MAX_FILE: u64 = 800 * 1024 * 1024;
 pub const MAX_REQUEST: usize = MAX_FILE as usize + 1024 * 1024;
+pub const MAX_AVATAR: u64 = 2 * 1024 * 1024; // 2 MiB for avatars
+pub const MAX_STICKER: u64 = 5 * 1024 * 1024; // 5 MiB for stickers
 fn err(status: StatusCode, text: &str) -> AppError { AppError { status, message:text.into() } }
 pub fn path(id: Uuid) -> PathBuf { PathBuf::from(std::env::var("UPLOAD_DIR").unwrap_or_else(|_| "./uploads".into())).join(id.to_string()) }
 pub struct Upload { pub id:Uuid, pub filename:String, pub mime:String, pub size:i64 }
 // Removes incomplete files, including when a client disconnects.
 struct Temp(PathBuf, bool);
 impl Drop for Temp { fn drop(&mut self) { if self.1 { let _=std::fs::remove_file(&self.0); } } }
+
+// Compress an image file losslessly (PNG) or with quality setting (JPEG/WebP).
+// Returns (new_size, new_mime) or None if compression not applicable.
+fn compress_image(filepath: &std::path::Path, mime: &str) -> Result<Option<(u64, String)>, AppError> {
+    let img = match image::open(filepath) {
+        Ok(img) => img,
+        Err(_) => return Ok(None),
+    };
+    let mut buf = Vec::new();
+    let (fmt, ext) = match mime {
+        "image/jpeg" => (ImageOutputFormat::Jpeg(85), "image/jpeg"),
+        "image/webp" => (ImageOutputFormat::WebP(85), "image/webp"),
+        "image/png" => (ImageOutputFormat::Png, "image/png"),
+        "image/gif" => (ImageOutputFormat::Gif, "image/gif"),
+        _ => return Ok(None),
+    };
+    if img.write_to(&mut buf, fmt).is_ok() && !buf.is_empty() {
+        let _ = std::fs::write(filepath, &buf);
+        Ok(Some((buf.len() as u64, ext.to_string())))
+    } else {
+        Ok(None)
+    }
+}
 pub async fn receive(mut multipart: Multipart, image_only: bool) -> Result<Upload, AppError> {
  let mut field=multipart.next_field().await.map_err(|_|err(StatusCode::BAD_REQUEST,"Invalid upload."))?.ok_or_else(||err(StatusCode::BAD_REQUEST,"No file was provided."))?;
  let filename=field.file_name().unwrap_or("file").chars().filter(|c| !c.is_control() && *c!='/' && *c!='\\').take(200).collect::<String>();
@@ -29,7 +55,21 @@ pub async fn receive(mut multipart: Multipart, image_only: bool) -> Result<Uploa
  let actual=if head.starts_with(b"\x89PNG\r\n\x1a\n") {"image/png"} else if head.starts_with(b"\xff\xd8\xff") {"image/jpeg"} else if head.starts_with(b"GIF87a")||head.starts_with(b"GIF89a") {"image/gif"} else if head.len()>=12 && &head[..4]==b"RIFF" && &head[8..12]==b"WEBP" {"image/webp"} else if head.len()>=12 && &head[4..8]==b"ftyp" {if &head[8..12]==b"qt  " {"video/quicktime"} else {"video/mp4"}} else if head.starts_with(b"\x1a\x45\xdf\xa3") {"video/webm"} else if head.starts_with(b"OggS") && claimed.starts_with("video/") {"video/ogg"} else {"application/octet-stream"};
  if image_only && !actual.starts_with("image/") {return Err(err(StatusCode::BAD_REQUEST,"The file is not a supported image."));}
  file.flush().await.map_err(|_|err(StatusCode::INTERNAL_SERVER_ERROR,"Could not finish upload."))?; guard.1=false;
- Ok(Upload{id,filename:if filename.is_empty(){"file".into()}else{filename},mime:actual.into(),size:size as i64})
+
+ // Auto-compress images
+ if actual.starts_with("image/") {
+    if let Some((compressed_size, compressed_mime)) = compress_image(&filepath, &actual)? {
+        size = compressed_size;
+        let _ = std::fs::set_permissions(&filepath, std::fs::Permissions::from_mode(0o644));
+        // Update mime if changed
+        let final_mime = compressed_mime;
+        Ok(Upload{id,filename:if filename.is_empty(){"file".into()}else{filename},mime:final_mime,size:size as i64})
+    } else {
+        Ok(Upload{id,filename:if filename.is_empty(){"file".into()}else{filename},mime:actual.into(),size:size as i64})
+    }
+ } else {
+    Ok(Upload{id,filename:if filename.is_empty(){"file".into()}else{filename},mime:actual.into(),size:size as i64})
+ }
 }
 pub async fn store(pool:&sqlx::SqlitePool, scope:&str, parent:Uuid, user:Uuid, upload:&Upload)->Result<(),AppError>{
  let result=sqlx::query("INSERT INTO stored_files (id,scope,parent_id,uploader_id,filename,mime,size) VALUES (?,?,?,?,?,?,?)").bind(upload.id).bind(scope).bind(parent).bind(user).bind(&upload.filename).bind(&upload.mime).bind(upload.size).execute(pool).await;

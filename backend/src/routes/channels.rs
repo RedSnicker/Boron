@@ -10,6 +10,7 @@ pub fn routes(pool: sqlx::SqlitePool) -> Router {
     Router::new().route("/", post(create_channel).get(list_channels))
         .route("/unread", get(crate::routes::chat::unread))
         .route("/:id", axum::routing::delete(delete_channel))
+        .route("/:id/reorder", put(reorder_channel))
         .route("/:id/members", post(add_member).get(list_members))
         .route("/:id/pins", get(crate::routes::chat::list_pins))
         .route("/:id/messages", get(crate::routes::chat::list_messages).post(crate::routes::chat::send_message))
@@ -29,16 +30,27 @@ async fn create_channel(State(pool):State<sqlx::SqlitePool>, Extension(user):Ext
     let id=Uuid::new_v4(); let now=chrono::Utc::now().naive_utc();
     let mut slug=p.slug.trim().to_lowercase(); if slug.is_empty() {slug=id.to_string();}
     let private=if p.r#type==crate::models::channel::ChannelType::Text || p.r#type==crate::models::channel::ChannelType::General {p.is_private.unwrap_or(true)} else {true};
+    let position=p.position.unwrap_or(0);
+    let icon=p.icon.clone();
     let mut tx=pool.begin().await?;
-    let insert=sqlx::query("INSERT INTO channels (id,team_id,name,slug,type,description,is_private,required_role,created_at,updated_at) VALUES (?,?,?,?,?,?,?,NULL,?,?)").bind(id).bind(p.team_id).bind(name).bind(&slug).bind(p.r#type.clone()).bind(&p.description).bind(private).bind(now).bind(now).execute(&mut *tx).await;
-    if let Err(e)=insert { if e.as_database_error().is_some_and(|d|d.is_unique_violation()) {slug=format!("{}-{}",slug,&id.to_string()[..8]); sqlx::query("INSERT INTO channels (id,team_id,name,slug,type,description,is_private,required_role,created_at,updated_at) VALUES (?,?,?,?,?,?,?,NULL,?,?)").bind(id).bind(p.team_id).bind(name).bind(&slug).bind(p.r#type.clone()).bind(&p.description).bind(private).bind(now).bind(now).execute(&mut *tx).await?;} else{return Err(e.into());}}
+    let insert=sqlx::query("INSERT INTO channels (id,team_id,name,slug,type,description,is_private,required_role,position,icon,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,NULL,?,?)").bind(id).bind(p.team_id).bind(name).bind(&slug).bind(p.r#type.clone()).bind(&p.description).bind(private).bind(position).bind(icon).bind(now).bind(now).execute(&mut *tx).await;
+    if let Err(e)=insert { if e.as_database_error().is_some_and(|d|d.is_unique_violation()) {slug=format!("{}-{}",slug,&id.to_string()[..8]); sqlx::query("INSERT INTO channels (id,team_id,name,slug,type,description,is_private,required_role,position,icon,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,NULL,?,?)").bind(id).bind(p.team_id).bind(name).bind(&slug).bind(p.r#type.clone()).bind(&p.description).bind(private).bind(position).bind(icon).bind(now).bind(now).execute(&mut *tx).await?;} else{return Err(e.into());}}
     sqlx::query("INSERT INTO channel_members (channel_id,user_id) VALUES (?,?)").bind(id).bind(user).execute(&mut *tx).await?; tx.commit().await?;
-    Ok(Json(Channel{id,team_id:p.team_id,name:name.into(),slug,r#type:p.r#type,description:p.description,is_private:private,required_role:None,created_at:now,updated_at:now}))
+    Ok(Json(Channel{id,team_id:p.team_id,name:name.into(),slug,r#type:p.r#type,description:p.description,is_private:private,required_role:None,position,icon,created_at:now,updated_at:now}))
 }
 async fn list_channels(State(pool):State<sqlx::SqlitePool>, Extension(user):Extension<Uuid>, Query(q):Query<ChannelQuery>) -> Result<Json<Vec<Channel>>,AppError> {
     access::team_member(&pool,q.team_id,user).await?;
-    let channels=sqlx::query_as::<_,Channel>("SELECT c.* FROM channels c JOIN team_members tm ON tm.team_id=c.team_id AND tm.user_id=? WHERE c.team_id=? AND (c.is_private=0 OR tm.role IN ('owner','admin') OR EXISTS(SELECT 1 FROM channel_members cm WHERE cm.channel_id=c.id AND cm.user_id=?)) ORDER BY c.name").bind(user).bind(q.team_id).bind(user).fetch_all(&pool).await?;
+    let channels=sqlx::query_as::<_,Channel>("SELECT c.* FROM channels c JOIN team_members tm ON tm.team_id=c.team_id AND tm.user_id=? WHERE c.team_id=? AND (c.is_private=0 OR tm.role IN ('owner','admin') OR EXISTS(SELECT 1 FROM channel_members cm WHERE cm.channel_id=c.id AND cm.user_id=?)) ORDER BY c.position ASC, c.name ASC").bind(user).bind(q.team_id).bind(user).fetch_all(&pool).await?;
     Ok(Json(channels))
+}
+
+#[derive(Deserialize)] struct ReorderChannel { channel_id: Uuid, position: i32 }
+async fn reorder_channel(State(pool):State<sqlx::SqlitePool>, Extension(user):Extension<Uuid>, Json(p):Json<ReorderChannel>) -> Result<Json<serde_json::Value>,AppError> {
+    let team:Option<Uuid>=sqlx::query_scalar("SELECT team_id FROM channels WHERE id=?").bind(p.channel_id).fetch_optional(&pool).await?;
+    let team=team.ok_or_else(||AppError{status:StatusCode::NOT_FOUND,message:"Channel not found".into()})?;
+    access::team_admin(&pool,team,user).await?;
+    sqlx::query("UPDATE channels SET position=?, updated_at=? WHERE id=?").bind(p.position).bind(chrono::Utc::now().naive_utc()).bind(p.channel_id).execute(&pool).await?;
+    Ok(Json(serde_json::json!({"status":"reordered"})))
 }
 async fn list_members(State(pool):State<sqlx::SqlitePool>, Extension(user):Extension<Uuid>, Path(channel):Path<Uuid>) -> Result<Json<Vec<serde_json::Value>>,AppError> {
     let team=access::channel_access(&pool,channel,user).await?;

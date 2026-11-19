@@ -28,8 +28,9 @@ async fn create_issue(State(pool):State<sqlx::SqlitePool>,Extension(user):Extens
  if team!=p.team_id{return Err(bad("Channel does not belong to that team."));} if p.title.trim().is_empty(){return Err(bad("An issue title is required."));}
  let assignees=unique_assignees(p.assignee_ids.unwrap_or_else(||p.assignee_id.into_iter().collect()));check_assignees(&pool,p.channel_id,&assignees).await?;
  let id=Uuid::new_v4();let now=chrono::Utc::now().naive_utc();let priority=p.priority.unwrap_or(crate::models::issue::IssuePriority::Medium);
+ let is_private=p.is_private.unwrap_or(false); // Issues are public by default
  let mut tx=pool.begin().await?;
- sqlx::query("INSERT INTO issues (id,team_id,channel_id,title,description,status,priority,assignee_id,reporter_id,created_at,updated_at) VALUES (?,?,?,?,?,'open',?,?,?,?,?)").bind(id).bind(team).bind(p.channel_id).bind(p.title.trim()).bind(&p.description).bind(priority).bind(assignees.first().copied()).bind(user).bind(now).bind(now).execute(&mut *tx).await?;
+ sqlx::query("INSERT INTO issues (id,team_id,channel_id,title,description,status,priority,assignee_id,reporter_id,is_private,created_at,updated_at) VALUES (?,?,?,?,?,'open',?,?,?,?,?,?)").bind(id).bind(team).bind(p.channel_id).bind(p.title.trim()).bind(&p.description).bind(priority).bind(assignees.first().copied()).bind(user).bind(is_private).bind(now).bind(now).execute(&mut *tx).await?;
  for (position,assignee) in assignees.iter().enumerate(){sqlx::query("INSERT INTO issue_assignees (issue_id,user_id,position) VALUES (?,?,?)").bind(id).bind(assignee).bind(position as i64).execute(&mut *tx).await?;}tx.commit().await?;
  let issue=sqlx::query_as::<_,Issue>("SELECT * FROM issues WHERE id=?").bind(id).fetch_one(&pool).await?; Ok(Json(issue_value(&pool,issue,false).await?))
 }
@@ -45,6 +46,7 @@ async fn update_issue(State(pool):State<sqlx::SqlitePool>,Extension(user):Extens
  if !["open","in_progress","review","done","closed"].contains(&status.as_str()){return Err(bad("Invalid status."));}
  let priority=p["priority"].as_str().map(str::to_owned).unwrap_or_else(||serde_json::to_value(&issue.priority).unwrap().as_str().unwrap().to_owned());
  if !["low","medium","high","critical"].contains(&priority.as_str()){return Err(bad("Invalid priority."));}
+ let is_private=p.get("is_private").and_then(|v| v.as_bool()).unwrap_or(issue.is_private);
  let new_assignees=if let Some(value)=p.get("assignee_ids") {let raw=value.as_array().ok_or_else(||bad("Assignees must be a list."))?;if raw.len()>100{return Err(bad("An issue can have at most 100 assignees."));}let mut ids=Vec::new();for value in raw {ids.push(Uuid::parse_str(value.as_str().ok_or_else(||bad("Invalid assignee."))?).map_err(|_|bad("Invalid assignee."))?);}Some(unique_assignees(ids))}
  else if let Some(value)=p.get("assignee_id") {Some(if value.is_null(){Vec::new()}else{vec![Uuid::parse_str(value.as_str().ok_or_else(||bad("Invalid assignee."))?).map_err(|_|bad("Invalid assignee."))?]})} else {None};
  if let Some(ids)=&new_assignees {check_assignees(&pool,channel,ids).await?;}
@@ -52,7 +54,7 @@ async fn update_issue(State(pool):State<sqlx::SqlitePool>,Extension(user):Extens
  let title=p["title"].as_str().unwrap_or(&issue.title).trim(); if title.is_empty(){return Err(bad("An issue title is required."));}
  let description=if p.get("description").is_some(){p["description"].as_str().map(str::to_owned)} else {issue.description};
  let mut tx=pool.begin().await?;
- sqlx::query("UPDATE issues SET title=?,description=?,status=?,priority=?,assignee_id=?,updated_at=? WHERE id=?").bind(title).bind(description).bind(status).bind(priority).bind(primary).bind(chrono::Utc::now().naive_utc()).bind(id).execute(&mut *tx).await?;
+ sqlx::query("UPDATE issues SET title=?,description=?,status=?,priority=?,assignee_id=?,is_private=?,updated_at=? WHERE id=?").bind(title).bind(description).bind(status).bind(priority).bind(primary).bind(is_private).bind(chrono::Utc::now().naive_utc()).bind(id).execute(&mut *tx).await?;
  if let Some(ids)=new_assignees {sqlx::query("DELETE FROM issue_assignees WHERE issue_id=?").bind(id).execute(&mut *tx).await?;for (position,assignee) in ids.iter().enumerate(){sqlx::query("INSERT INTO issue_assignees (issue_id,user_id,position) VALUES (?,?,?)").bind(id).bind(assignee).bind(position as i64).execute(&mut *tx).await?;}}tx.commit().await?;
  let updated=sqlx::query_as::<_,Issue>("SELECT * FROM issues WHERE id=?").bind(id).fetch_one(&pool).await?;Ok(Json(issue_value(&pool,updated,false).await?))
 }
