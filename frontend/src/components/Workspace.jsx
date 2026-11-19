@@ -67,7 +67,62 @@ export function Workspace({apiWarning,checkApi,user,onSignOut,onProfile,onSwitch
   setDialog(null);
  }catch(e){setError(errorMessage(e));}finally{setBusy(false);}}
  const header=<Stack direction="horizontal" gap={2} vAlign="center" padding={3}><Avatar name={team?.name||'Boron'} src={team?.avatar_url||undefined} size="sm"/><Stack size="fill"><Text weight="semibold">{team?.name||'Boron workspace'}</Text><Text size="xs" type="supporting">Workspace</Text></Stack></Stack>;
- const footer=<Stack className="account-footer"><button type="button" className={`account-button ${accountOpen?'account-button-open':''}`} aria-label="Account menu" aria-haspopup="dialog" aria-expanded={accountOpen} aria-controls="account-menu" onClick={()=>{enableSound();setAccountOpen(v=>!v);}}><Avatar name={user.display_name} src={user.avatar_url||undefined} size="sm"/><span className="account-summary"><strong>{user.display_name}</strong><small>{user.email}</small></span><ChevronUp className={`account-chevron ${accountOpen?'open':''}`} size={16}/></button>{terminalOpen&&<TerminalDialog user={user} onClose={()=>setTerminalOpen(false)}}/>{accountOpen&&<Stack id="account-menu" role="dialog" aria-label="Account" className="account-menu" gap={0}><Stack direction="horizontal" gap={2} vAlign="center" className="account-menu-profile"><Avatar name={user.display_name} src={user.avatar_url||undefined} size="sm"/><Stack className="account-profile-text" gap={0}><Text weight="semibold" size="sm">{user.display_name}</Text><Text size="xs" type="supporting">{user.email}</Text></Stack><Check size={15}/></Stack><Stack className="account-menu-section" gap={0}><button type="button" onClick={()=>{setAccountOpen(false);setSettingsOpen(true);}}><SettingsIcon size={16}/><span>Settings</span></button>{isAdmin&&<button type="button" onClick={()=>{setAccountOpen(false);setTerminalOpen(true);}}><PanelLeft size={16}/><span>Admin Terminal</span></button>}<Stack className="account-theme-row" direction="horizontal" vAlign="center"><Sun size={16}/><span>Appearance</span><Switch label="Dark mode" isLabelHidden size="sm" value={theme==='dark'} onChange={value=>setTheme(value?'dark':'light')}/><Moon size={16}/></Stack>{accounts.filter(a=>a.user.id!==user.id).length>0&&<Stack className="account-menu-section" gap={0}><Text className="account-section-label" size="xs" type="supporting">SWITCH ACCOUNT</Text>{accounts.filter(a=>a.user.id!==user.id).map(a=><button type="button" key={a.user.id} onClick={()=>onSwitch(a)}><Avatar name={a.user.display_name} src={a.user.avatar_url||undefined} size="xsm"/><span>Switch to {a.user.display_name}</span></button>)}</Stack>}<Stack className="account-menu-section" gap={0}><button type="button" aria-label="Add / switch account" onClick={onAddAccount}><UserRoundPlus size={16}/><span>Add account</span></button><button type="button" className="destructive" onClick={onSignOut}><LogOut size={16}/><span>Sign out</span></button></Stack></Stack>}</Stack>;
+  const footer=(
+    <Stack className="account-footer">
+      <button type="button" className={`account-button ${accountOpen?'account-button-open':''}`} aria-label="Account menu" aria-haspopup="dialog" aria-expanded={accountOpen} aria-controls="account-menu" onClick={()=>{enableSound();setAccountOpen(v=>!v);}}>
+        <Avatar name={user.display_name} src={user.avatar_url||undefined} size="sm"/>
+        <span className="account-summary"><strong>{user.display_name}</strong><small>{user.email}</small></span>
+        <ChevronUp className={`account-chevron ${accountOpen?'open':''}`} size={16}/>
+      </button>
+      {terminalOpen&&<TerminalDialog user={user} onClose={()=>setTerminalOpen(false)}/>}
+      {accountOpen&&(
+        <Stack id="account-menu" role="dialog" aria-label="Account" className="account-menu" gap={0}>
+          <Stack direction="horizontal" gap={2} vAlign="center" className="account-menu-profile">
+            <Avatar name={user.display_name} src={user.avatar_url||undefined} size="sm"/>
+            <Stack className="account-profile-text" gap={0}>
+              <Text weight="semibold" size="sm">{user.display_name}</Text>
+              <Text size="xs" type="supporting">{user.email}</Text>
+            </Stack>
+            <Check size={15}/>
+          </Stack>
+          <Stack className="account-menu-section" gap={0}>
+            <button type="button" onClick={()=>{setAccountOpen(false);setSettingsOpen(true);}}>
+              <SettingsIcon size="16"/><span>Settings</span>
+            </button>
+            {isAdmin&&(
+              <button type="button" onClick={()=>{setAccountOpen(false);setTerminalOpen(true);}}>
+                <PanelLeft size="16"/><span>Admin Terminal</span>
+              </button>
+            )}
+            <Stack className="account-theme-row" direction="horizontal" vAlign="center">
+              <Sun size="16"/><span>Appearance</span>
+              <Switch label="Dark mode" isLabelHidden size="sm" value={theme==='dark'} onChange={value=>setTheme(value?'dark':'light')}/>
+              <Moon size="16"/>
+            </Stack>
+            {accounts.filter(a=>a.user.id!==user.id).length>0&&(
+              <Stack className="account-menu-section" gap={0}>
+                <Text className="account-section-label" size="xs" type="supporting">SWITCH ACCOUNT</Text>
+                {accounts.filter(a=>a.user.id!==user.id).map(a=>
+                  <button type="button" key={a.user.id} onClick={()=>onSwitch(a)}>
+                    <Avatar name={a.user.display_name} src={a.user.avatar_url||undefined} size="xsm"/>
+                    <span>Switch to {a.user.display_name}</span>
+                  </button>
+                )}
+              </Stack>
+            )}
+            <Stack className="account-menu-section" gap={0}>
+              <button type="button" aria-label="Add / switch account" onClick={onAddAccount}>
+                <UserRoundPlus size="16"/><span>Add account</span>
+              </button>
+              <button type="button" className="destructive" onClick={onSignOut}>
+                <LogOut size="16"/><span>Sign out</span>
+              </button>
+            </Stack>
+          </Stack>
+        </Stack>
+      )}
+    </Stack>
+  );
  return <Stack direction="horizontal" className="workspace" height="100%" width="100%">
   <aside onContextMenu={e=>{if(e.target.closest('.astryx-side-nav-item,button,a'))return;if(teamId&&isAdmin){e.preventDefault();setPopup({x:e.clientX,y:e.clientY,items:[{label:'Create channel',onClick:()=>createSpace(teamId)}]});}}} className={`sidebar ${mobileNav?'sidebar-open':''}`}><SideNav header={header} footer={footer}>
    <SideNavSection title="Workspace"><SideNavItem label="Home" icon={<Home size={16}/>} isSelected={!teamId} onClick={()=>{navigate('/');setMobileNav(false);}}/><SideNavItem label="New team" icon={<Plus size={16}/>} onClick={()=>open('team')}/></SideNavSection>
