@@ -140,17 +140,24 @@ async fn main() {
         ))
         .layer(cors);
 
+    // Port resolution: check WEB_PORT, then PORT, then SERVER_PORT (Pterodactyl/Altare), default 3001
     let web_port = std::env::var("WEB_PORT")
         .or_else(|_| std::env::var("PORT"))
-        .unwrap_or_else(|_| "3001".into());
-    let addr: SocketAddr = format!("{}:{}",
-        std::env::var("HOST").unwrap_or_else(|_| "0.0.0.0".into()),
-        web_port
-    )
-    .parse()
-    .expect("Invalid socket address");
+        .or_else(|_| std::env::var("SERVER_PORT"))
+        .unwrap_or_else(|_| {
+            tracing::warn!("No WEB_PORT/PORT/SERVER_PORT env var found, defaulting to 3001");
+            "3001".into()
+        });
+    let port_source = if std::env::var("WEB_PORT").is_ok() { "WEB_PORT" }
+        else if std::env::var("PORT").is_ok() { "PORT" }
+        else if std::env::var("SERVER_PORT").is_ok() { "SERVER_PORT" }
+        else { "default" };
+    let host = std::env::var("HOST").unwrap_or_else(|_| "0.0.0.0".into());
+    let addr: SocketAddr = format!("{}:{}", host, web_port)
+        .parse()
+        .expect("Invalid socket address");
 
-    tracing::info!("Server listening on {}", addr);
+    tracing::info!("Server listening on {} (port from {}={})", addr, port_source, web_port);
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
