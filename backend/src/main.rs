@@ -88,7 +88,8 @@ async fn main() {
     }
     let jwt_secret = jwt_secret.unwrap();
 
-    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+    let database_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:/data/boron.db".into());
+    let _ = std::fs::create_dir_all("/data");
     let options = SqliteConnectOptions::from_str(&database_url)
         .expect("DATABASE_URL must be a valid SQLite URL")
         .create_if_missing(true)
@@ -146,6 +147,7 @@ async fn main() {
         .nest("/api/notes", routes::notes::routes(pool.clone()))
         .nest("/api/github", routes::github::routes(pool.clone()))
         .nest("/api/admin", routes::admin::routes(pool.clone()))
+        .nest("/api/roles", routes::roles::routes(pool.clone()))
         .route("/ws", get(routes::websocket::handler))
         .fallback(serve_frontend)
         .layer(axum::middleware::from_fn_with_state(

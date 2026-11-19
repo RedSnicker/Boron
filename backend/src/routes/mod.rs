@@ -9,3 +9,4 @@ pub mod websocket;
 pub mod chat;
 pub mod stickers;
 pub mod admin;
+pub mod roles;
